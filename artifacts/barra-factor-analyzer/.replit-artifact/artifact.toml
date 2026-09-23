@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Barra Factor Analyzer"
+description = "互動式股票因子分析工具，讓使用者輸入股票代號並查看近 14 個月資料計算出的 Barra 動量與流動性因子。"
+version = "1.0.0"
+id = "artifacts/barra-factor-analyzer"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19358
+
+[services.development]
+run = "pnpm --filter @workspace/barra-factor-analyzer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/barra-factor-analyzer", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/barra-factor-analyzer/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19358"
+BASE_PATH = "/"

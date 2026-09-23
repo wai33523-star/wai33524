@@ -1,0 +1,1242 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: factors
+    description: Barra factor analysis operations
+  - name: market
+    description: Realtime market snapshot and selection operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /factors/{ticker}:
+    get:
+      operationId: getFactorAnalysis
+      tags: [factors]
+      summary: Calculate Barra momentum and liquidity factors
+      description: Fetches the latest 14 months of daily Yahoo Finance data and calculates the RSTR-style momentum and STOM-style liquidity features.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Yahoo Finance ticker symbol, for example 0700.HK
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+            pattern: "^[A-Za-z0-9._=^=-]+$"
+      responses:
+        "200":
+          description: Factor analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactorAnalysis"
+        "400":
+          description: Invalid ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No market data found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /valuation/{ticker}:
+    get:
+      operationId: getValuationAssessment
+      tags: [factors]
+      summary: Assess growth potential and valuation pressure
+      description: Combines Yahoo Finance annual fundamental time series, trailing P/E history and the latest complete market price to assess whether a stock has improving earnings potential while trading below its own historical P/E median.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Yahoo Finance ticker symbol, for example 3690.HK
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+            pattern: "^[A-Za-z0-9._=^=-]+$"
+      responses:
+        "200":
+          description: Valuation and growth assessment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValuationAssessment"
+        "400":
+          description: Invalid ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundamental or market data unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Fundamental data provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/realtime/{ticker}:
+    get:
+      operationId: getRealtimeMarketData
+      tags: [market]
+      summary: Get a realtime market snapshot
+      description: Fetches the latest one-minute market quote when available and falls back to the latest daily close outside trading hours.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Yahoo Finance ticker symbol, for example ^HSI
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+            pattern: "^[A-Za-z0-9._=^=-]+$"
+      responses:
+        "200":
+          description: Realtime or latest available market snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealtimeMarketData"
+        "400":
+          description: Invalid ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/history/{ticker}:
+    get:
+      operationId: getMarketHistory
+      tags: [market]
+      summary: Get recent daily market data from the database
+      description: Returns the most recent complete daily rows stored in PostgreSQL for a ticker.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Yahoo Finance ticker symbol, for example ^HSI
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+            pattern: "^[A-Za-z0-9._=^=-]+$"
+        - name: days
+          in: query
+          required: false
+          description: Number of most recent stored trading days to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+      responses:
+        "200":
+          description: Recent stored daily market data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketHistory"
+        "400":
+          description: Invalid ticker or day count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No stored market data found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /backtest/{ticker}:
+    get:
+      operationId: getHistoricalBacktest
+      tags: [factors]
+      summary: Run EOD factor signal backtest
+      description: Backtests an explainable RSTR and STOM confirmation signal using end-of-day data.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Yahoo Finance ticker symbol, for example 0700.HK
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+            pattern: "^[A-Za-z0-9._=^=-]+$"
+        - name: feeBps
+          in: query
+          required: false
+          description: One-way commission assumption in basis points (1 bp = 0.01%); net returns deduct twice this value together with slippage.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 100
+            default: 10
+        - name: slippageBps
+          in: query
+          required: false
+          description: One-way execution slippage assumption in basis points; net returns deduct the combined fee and slippage for both entry and exit.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 100
+            default: 5
+        - name: rstrThreshold
+          in: query
+          required: false
+          description: RSTR Z-score threshold required to confirm a signal.
+          schema:
+            type: number
+            minimum: -3
+            maximum: 3
+            default: 0
+        - name: stomThreshold
+          in: query
+          required: false
+          description: STOM Z-score threshold required to confirm a signal.
+          schema:
+            type: number
+            minimum: -3
+            maximum: 3
+            default: 0
+        - name: shortDays
+          in: query
+          required: false
+          description: Short holding period in trading days.
+          schema:
+            type: number
+            minimum: 5
+            maximum: 63
+            default: 21
+        - name: mediumDays
+          in: query
+          required: false
+          description: Medium holding period in trading days.
+          schema:
+            type: number
+            minimum: 21
+            maximum: 126
+            default: 63
+        - name: longDays
+          in: query
+          required: false
+          description: Long holding period in trading days.
+          schema:
+            type: number
+            minimum: 63
+            maximum: 504
+            default: 252
+      responses:
+        "200":
+          description: Historical backtest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalBacktest"
+        "400":
+          description: Invalid ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not enough market data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-quality-picks:
+    get:
+      operationId: getHsiQualityPicks
+      tags: [market]
+      summary: Select five quality HSI constituents
+      description: Ranks HSI constituents with a transparent price-volume quality model and returns the top five.
+      responses:
+        "200":
+          description: HSI quality stock selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiQualitySelection"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-quality-laggards:
+    get:
+      operationId: getHsiQualityLaggards
+      tags: [market]
+      summary: Select five weakest HSI constituents
+      description: Applies the same transparent price-volume model as the quality selection and returns the five lowest-scoring core HSI candidates for risk monitoring.
+      responses:
+        "200":
+          description: HSI weakest stock selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiQualitySelection"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-recovery-picks:
+    get:
+      operationId: getHsiRecoveryPicks
+      tags: [market]
+      summary: Select five HSI laggards with recovery potential
+      description: Finds relatively underperforming core HSI candidates with improving recent momentum, resilience, stability and liquidity.
+      responses:
+        "200":
+          description: HSI recovery-potential stock selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiQualitySelection"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-leader-picks:
+    get:
+      operationId: getHsiLeaderPicks
+      tags: [market]
+      summary: Select five leading HSI constituents with continued potential
+      description: Finds leading core HSI candidates with strong recent momentum, trend acceleration, resilience, stability and liquidity.
+      responses:
+        "200":
+          description: HSI leading-potential stock selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiQualitySelection"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-leader-pullback-picks:
+    get:
+      operationId: getHsiLeaderPullbackPicks
+      tags: [market]
+      summary: Select five leading HSI constituents with pullback potential
+      description: Finds core HSI candidates that remain leaders over the medium and long term while showing recent drawdown, weakening momentum or volatility expansion signals.
+      responses:
+        "200":
+          description: HSI leader pullback-potential stock selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiQualitySelection"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-movers:
+    get:
+      operationId: getHsiMovers
+      tags: [market]
+      summary: Find the leading and declining HSI constituents
+      description: Ranks the core HSI candidate universe by the latest complete trading-day percentage change and returns the top gainers and decliners.
+      responses:
+        "200":
+          description: HSI latest movers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiMovers"
+        "404":
+          description: Not enough constituent data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-valuation-picks:
+    get:
+      operationId: getHsiValuationPicks
+      tags: [market]
+      summary: Find HSI growth and valuation opportunities
+      description: Evaluates the core HSI candidate universe using annual earnings and revenue growth plus historical trailing P/E compression, then returns the strongest combined opportunities.
+      responses:
+        "200":
+          description: HSI valuation opportunity selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiValuationSelection"
+        "404":
+          description: Not enough fundamental data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Fundamental data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/hsi-value-recovery-picks:
+    get:
+      operationId: getHsiValueRecoveryPicks
+      tags: [market]
+      summary: Select five HSI value stocks with recovery potential
+      description: Combines positive-EPS valuation selection with relative laggard and recovery signals to return five high-value HSI candidates that have not already become momentum leaders.
+      responses:
+        "200":
+          description: HSI value and recovery-potential selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiValueRecoverySelection"
+        "404":
+          description: Not enough value and recovery data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market or fundamental data providers unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    PricePoint:
+      type: object
+      properties:
+        date:
+          type: string
+        close:
+          type: number
+        volume:
+          type: number
+        return:
+          type: ["number", "null"]
+        rstrZ:
+          type: ["number", "null"]
+          description: Rolling RSTR Z-score at this date (null until enough history)
+        stomZ:
+          type: ["number", "null"]
+          description: Rolling STOM Z-score at this date (null until enough history)
+      required:
+        - date
+        - close
+        - volume
+        - return
+        - rstrZ
+        - stomZ
+    FactorAnalysis:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        source:
+          type: string
+        fetchedAt:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        momentum:
+          type: number
+        liquidity:
+          type: number
+        latestClose:
+          type: number
+        averageVolume:
+          type: number
+        averageTurnoverProxy:
+          type: number
+        momentumWindowStart:
+          type: string
+        momentumWindowEnd:
+          type: string
+        liquidityWindowStart:
+          type: string
+        liquidityWindowEnd:
+          type: string
+        divergenceAlert:
+          type: boolean
+          description: True when STOM Z-score > 2.0 and RSTR Z-score < 0 (放量滯漲背離)
+        crowdingRiskLevel:
+          type: string
+          enum: [資料不足, 正常, 偏高, 極端風險]
+          description: Single-name historical crowding proxy risk level, not a cross-sectional fund crowding percentile
+        crowdingScore:
+          type: number
+          description: Historical crowding proxy score from 0 to 100
+        crowdingDrivers:
+          type: array
+          items:
+            type: string
+        crowdingAnalysis:
+          type: string
+        crowdingWindowStart:
+          type: string
+        crowdingWindowEnd:
+          type: string
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/PricePoint"
+      required:
+        - ticker
+        - name
+        - currency
+        - source
+        - fetchedAt
+        - startDate
+        - endDate
+        - momentum
+        - liquidity
+        - latestClose
+        - averageVolume
+        - averageTurnoverProxy
+        - momentumWindowStart
+        - momentumWindowEnd
+        - liquidityWindowStart
+        - liquidityWindowEnd
+        - divergenceAlert
+        - crowdingRiskLevel
+        - crowdingScore
+        - crowdingDrivers
+        - crowdingAnalysis
+        - crowdingWindowStart
+        - crowdingWindowEnd
+        - series
+    ValuationAssessment:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        price:
+          type: number
+        priceAsOf:
+          type: string
+        source:
+          type: string
+        fetchedAt:
+          type: string
+        dataAsOf:
+          type: string
+        trailingPe:
+          type: ["number", "null"]
+        trailingPeAsOf:
+          type: ["string", "null"]
+        forwardPe:
+          type: ["number", "null"]
+        peMedian:
+          type: ["number", "null"]
+        pePercentile:
+          type: ["number", "null"]
+        peDiscountVsMedian:
+          type: ["number", "null"]
+        latestEps:
+          type: ["number", "null"]
+        previousEps:
+          type: ["number", "null"]
+        epsGrowth:
+          type: ["number", "null"]
+        latestTtmEps:
+          type: ["number", "null"]
+          description: Latest trailing-twelve-month diluted EPS; this is not the latest annual EPS.
+        ttmEpsAsOf:
+          type: ["string", "null"]
+          description: Period end date for the trailing-twelve-month EPS.
+        latestRevenue:
+          type: ["number", "null"]
+        previousRevenue:
+          type: ["number", "null"]
+        revenueGrowth:
+          type: ["number", "null"]
+        latestNetIncome:
+          type: ["number", "null"]
+        previousNetIncome:
+          type: ["number", "null"]
+        netIncomeGrowth:
+          type: ["number", "null"]
+        earningsPotential:
+          type: string
+          enum: [較強, 一般, 偏弱, 資料不足]
+        valuationStatus:
+          type: string
+          enum: [低於歷史中位數, 接近歷史中位數, 高於歷史中位數, 資料不足]
+        screeningResult:
+          type: string
+          enum: [符合, 部分符合, 不符合, 資料不足]
+        opportunityScore:
+          type: number
+        reason:
+          type: string
+        limitation:
+          type: string
+      required:
+        - ticker
+        - name
+        - currency
+        - price
+        - priceAsOf
+        - source
+        - fetchedAt
+        - dataAsOf
+        - trailingPe
+        - trailingPeAsOf
+        - forwardPe
+        - peMedian
+        - pePercentile
+        - peDiscountVsMedian
+        - latestEps
+        - previousEps
+        - epsGrowth
+        - latestTtmEps
+        - ttmEpsAsOf
+        - latestRevenue
+        - previousRevenue
+        - revenueGrowth
+        - latestNetIncome
+        - previousNetIncome
+        - netIncomeGrowth
+        - earningsPotential
+        - valuationStatus
+        - screeningResult
+        - opportunityScore
+        - reason
+        - limitation
+    HsiValuationSelection:
+      type: object
+      properties:
+        asOf:
+          type: string
+        source:
+          type: string
+        universeSize:
+          type: number
+        evaluatedCount:
+          type: number
+        qualifiedCount:
+          type: number
+        picks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValuationAssessment"
+        model:
+          type: string
+        limitation:
+          type: string
+      required:
+        - asOf
+        - source
+        - universeSize
+        - evaluatedCount
+        - qualifiedCount
+        - picks
+        - model
+        - limitation
+    HsiValueRecoveryPick:
+      type: object
+      properties:
+        rank:
+          type: number
+        ticker:
+          type: string
+        name:
+          type: string
+        sector:
+          type: string
+        score:
+          type: number
+          description: Combined value-for-money and recovery-potential score from 0 to 100.
+        valueScore:
+          type: number
+        recoveryScore:
+          type: number
+        latestEps:
+          type: number
+        latestTtmEps:
+          type: ["number", "null"]
+          description: Latest trailing-twelve-month diluted EPS; this is separate from annual EPS.
+        ttmEpsAsOf:
+          type: ["string", "null"]
+          description: Period end date for the trailing-twelve-month EPS.
+        trailingPe:
+          type: number
+        peDiscountVsMedian:
+          type: number
+        momentum12m:
+          type: number
+        momentum6m:
+          type: number
+        dataEndDate:
+          type: string
+        reason:
+          type: string
+      required:
+        - rank
+        - ticker
+        - name
+        - sector
+        - score
+        - valueScore
+        - recoveryScore
+        - latestEps
+        - latestTtmEps
+        - ttmEpsAsOf
+        - trailingPe
+        - peDiscountVsMedian
+        - momentum12m
+        - momentum6m
+        - dataEndDate
+        - reason
+    HsiValueRecoverySelection:
+      type: object
+      properties:
+        asOf:
+          type: string
+        source:
+          type: string
+        universeSize:
+          type: number
+        evaluatedCount:
+          type: number
+        eligibleCount:
+          type: number
+        picks:
+          type: array
+          items:
+            $ref: "#/components/schemas/HsiValueRecoveryPick"
+        model:
+          type: string
+        limitation:
+          type: string
+      required:
+        - asOf
+        - source
+        - universeSize
+        - evaluatedCount
+        - eligibleCount
+        - picks
+        - model
+        - limitation
+    RealtimeMarketData:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        latestPrice:
+          type: number
+        updatedAt:
+          type: string
+        source:
+          type: string
+        granularity:
+          type: string
+          enum: [1m, 1d]
+        isIntraday:
+          type: boolean
+      required:
+        - ticker
+        - name
+        - currency
+        - latestPrice
+        - updatedAt
+        - source
+        - granularity
+        - isIntraday
+    MarketHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        close:
+          type: number
+        change:
+          type: ["number", "null"]
+        changePercent:
+          type: ["number", "null"]
+        volume:
+          type: number
+      required:
+        - date
+        - close
+        - change
+        - changePercent
+        - volume
+    MarketHistory:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        source:
+          type: string
+        fetchedAt:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketHistoryPoint"
+      required:
+        - ticker
+        - name
+        - currency
+        - source
+        - fetchedAt
+        - startDate
+        - endDate
+        - points
+    HsiQualityPick:
+      type: object
+      properties:
+        rank:
+          type: number
+        ticker:
+          type: string
+        name:
+          type: string
+        sector:
+          type: string
+        score:
+          type: number
+        momentum12m:
+          type: number
+        momentum6m:
+          type: number
+        pullbackDepth:
+          type: number
+          description: Fractional distance below the trailing 252-trading-day high, for example 0.08 means 8 percent.
+        recentWeakness:
+          type: number
+          description: Cross-sectional score for recent short-term momentum weakness from 0 to 100.
+        volatilityExpansion:
+          type: number
+          description: Cross-sectional score for recent volatility expansion from 0 to 100.
+        stability:
+          type: number
+        drawdownResilience:
+          type: number
+        liquidity:
+          type: number
+        dataEndDate:
+          type: string
+        reason:
+          type: string
+      required:
+        - rank
+        - ticker
+        - name
+        - sector
+        - score
+        - momentum12m
+        - momentum6m
+        - stability
+        - drawdownResilience
+        - liquidity
+        - dataEndDate
+        - reason
+    HsiQualitySelection:
+      type: object
+      properties:
+        asOf:
+          type: string
+        source:
+          type: string
+        universeSize:
+          type: number
+        scoredCount:
+          type: number
+        picks:
+          type: array
+          items:
+            $ref: "#/components/schemas/HsiQualityPick"
+        model:
+          type: string
+        limitation:
+          type: string
+      required:
+        - asOf
+        - source
+        - universeSize
+        - scoredCount
+        - picks
+        - model
+        - limitation
+    HsiMover:
+      type: object
+      properties:
+        rank:
+          type: number
+        ticker:
+          type: string
+        name:
+          type: string
+        sector:
+          type: string
+        latestPrice:
+          type: number
+        change:
+          type: number
+        changePercent:
+          type: number
+        dataEndDate:
+          type: string
+      required:
+        - rank
+        - ticker
+        - name
+        - sector
+        - latestPrice
+        - change
+        - changePercent
+        - dataEndDate
+    HsiMovers:
+      type: object
+      properties:
+        asOf:
+          type: string
+        source:
+          type: string
+        universeSize:
+          type: number
+        scoredCount:
+          type: number
+        gainers:
+          type: array
+          items:
+            $ref: "#/components/schemas/HsiMover"
+        decliners:
+          type: array
+          items:
+            $ref: "#/components/schemas/HsiMover"
+        model:
+          type: string
+        limitation:
+          type: string
+      required:
+        - asOf
+        - source
+        - universeSize
+        - scoredCount
+        - gainers
+        - decliners
+        - model
+        - limitation
+    BacktestPeriod:
+      type: object
+      properties:
+        label:
+          type: string
+        tradingDays:
+          type: number
+        completedSamples:
+          type: number
+        hitCount:
+          type: number
+        hitRate:
+          type: number
+        averageReturn:
+          type: number
+        medianReturn:
+          type: number
+        bestReturn:
+          type: number
+        worstReturn:
+          type: number
+        netHitRate:
+          type: number
+        netAverageReturn:
+          type: number
+        netMedianReturn:
+          type: number
+        netBestReturn:
+          type: number
+        netWorstReturn:
+          type: number
+      required:
+        - label
+        - tradingDays
+        - completedSamples
+        - hitCount
+        - hitRate
+        - averageReturn
+        - medianReturn
+        - bestReturn
+        - worstReturn
+        - netHitRate
+        - netAverageReturn
+        - netMedianReturn
+        - netBestReturn
+        - netWorstReturn
+    BacktestCostScenario:
+      type: object
+      properties:
+        feeBps:
+          type: number
+        slippageBps:
+          type: number
+        totalRoundTripBps:
+          type: number
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestPeriod"
+      required:
+        - feeBps
+        - slippageBps
+        - totalRoundTripBps
+        - periods
+    BacktestTrend:
+      type: object
+      properties:
+        label:
+          type: string
+        tradingDays:
+          type: number
+        return:
+          type: number
+        annualizedReturn:
+          type: number
+        direction:
+          type: string
+          enum: [上升, 下降, 横行]
+        analysis:
+          type: string
+      required:
+        - label
+        - tradingDays
+        - return
+        - annualizedReturn
+        - direction
+        - analysis
+    BacktestSignal:
+      type: object
+      properties:
+        signalDate:
+          type: string
+        executionDate:
+          type: string
+        executionClose:
+          type: number
+        rstrZ:
+          type: number
+        stomZ:
+          type: number
+        returns:
+          type: object
+          additionalProperties:
+            type: number
+      required:
+        - signalDate
+        - executionDate
+        - executionClose
+        - rstrZ
+        - stomZ
+        - returns
+    HistoricalBacktest:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        source:
+          type: string
+        fetchedAt:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        signalDefinition:
+          type: string
+        executionRule:
+          type: string
+        totalSignals:
+          type: number
+        parameters:
+          type: object
+          properties:
+            rstrThreshold:
+              type: number
+            stomThreshold:
+              type: number
+            shortDays:
+              type: number
+            mediumDays:
+              type: number
+            longDays:
+              type: number
+          required: [rstrThreshold, stomThreshold, shortDays, mediumDays, longDays]
+        costAssumptions:
+          type: object
+          properties:
+            feeBps:
+              type: number
+            slippageBps:
+              type: number
+            totalRoundTripBps:
+              type: number
+          required: [feeBps, slippageBps, totalRoundTripBps]
+        costScenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestCostScenario"
+        trends:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestTrend"
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestPeriod"
+        recentSignals:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestSignal"
+      required:
+        - ticker
+        - name
+        - currency
+        - source
+        - fetchedAt
+        - startDate
+        - endDate
+        - signalDefinition
+        - executionRule
+        - totalSignals
+        - parameters
+        - costAssumptions
+        - costScenarios
+        - trends
+        - periods
+        - recentSignals
+
