@@ -4,9 +4,21 @@ import {
   GetMarketHistoryResponse,
   GetRealtimeMarketDataParams,
   GetRealtimeMarketDataResponse,
+  RefreshLocalMarketDataBody,
+  RefreshLocalMarketDataResponse,
 } from "@workspace/api-zod";
 import { normalizeTickerInput } from "../lib/ticker";
-import { loadNewestSnapshotHistory, loadSnapshotQuote } from "../lib/market-snapshot";
+import {
+  isLocalMarketDataMode,
+  loadNewestSnapshotHistory,
+  loadSnapshotQuote,
+  saveMarketHistory,
+} from "../lib/market-snapshot";
+import { fetchExternalMarketDataForUpdate } from "./factors";
+import {
+  fetchFundamentalsForLocalUpdate,
+  storeFundamentalsForLocalUpdate,
+} from "./valuation";
 
 type YahooChartResponse = {
   chart?: {
@@ -139,13 +151,26 @@ async function fetchSinaSnapshot(ticker: string): Promise<SnapshotResult> {
 
 async function loadStoredSnapshot(ticker: string): Promise<SnapshotResult | null> {
   const record = loadSnapshotQuote(ticker);
-  if (!record) return null;
+  const [latest] = loadNewestSnapshotHistory(ticker, 1);
+  const snapshotIsNewer = record &&
+    (!latest || record.observedAt.getTime() >= Date.parse(`${latest.tradingDate}T00:00:00Z`));
+  if (record && snapshotIsNewer) {
+    return {
+      timestamp: Math.floor(record.observedAt.getTime() / 1000),
+      price: record.latestPrice,
+      name: record.name,
+      currency: record.currency,
+      source: `${record.source}（本地快照）`,
+    };
+  }
+  if (!latest) return null;
+  const observedAt = Date.parse(`${latest.tradingDate}T00:00:00Z`);
   return {
-    timestamp: Math.floor(record.observedAt.getTime() / 1000),
-    price: record.latestPrice,
-    name: record.name,
-    currency: record.currency,
-    source: `${record.source}（本地快照）`,
+    timestamp: Math.floor(observedAt / 1000),
+    price: latest.rawClose,
+    name: latest.name,
+    currency: latest.currency,
+    source: `${latest.source}（本機收市價）`,
   };
 }
 
@@ -168,6 +193,25 @@ router.get("/market/realtime/:ticker", async (req, res): Promise<void> => {
   const ticker = parsedParams.data.ticker;
 
   try {
+    if (isLocalMarketDataMode()) {
+      const stored = await loadStoredSnapshot(ticker);
+      if (!stored) {
+        res.status(404).json({ error: "本機資料庫沒有這個代號的報價，請先更新行情" });
+        return;
+      }
+      res.json(GetRealtimeMarketDataResponse.parse({
+        ticker,
+        name: stored.name,
+        currency: stored.currency,
+        latestPrice: stored.price,
+        updatedAt: new Date(stored.timestamp * 1000).toISOString(),
+        source: stored.source,
+        granularity: "1d",
+        isIntraday: false,
+      }));
+      return;
+    }
+
     let snapshotResult: SnapshotResult | null = null;
     let granularity: "1m" | "1d" = "1m";
     try {
@@ -224,6 +268,52 @@ router.get("/market/realtime/:ticker", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/market/refresh", async (req, res): Promise<void> => {
+  if (!isLocalMarketDataMode()) {
+    res.status(403).json({ error: "行情更新只在本機執行模式提供" });
+    return;
+  }
+
+  const normalizedTicker = normalizeTickerInput(req.body?.ticker);
+  const parsedBody = RefreshLocalMarketDataBody.safeParse({ ticker: normalizedTicker });
+  if (!parsedBody.success) {
+    res.status(400).json({ error: "請輸入有效的市場代號" });
+    return;
+  }
+
+  const ticker = parsedBody.data.ticker;
+  try {
+    const result = await fetchExternalMarketDataForUpdate(ticker, 60);
+    const updatedRows = saveMarketHistory(
+      ticker,
+      result.name ?? ticker,
+      result.currency ?? (ticker === "^HSI" ? "HKD" : "—"),
+      result.source ?? "Yahoo Finance",
+      result.rows,
+    );
+    let fundamentalsUpdated = false;
+    if (ticker !== "^HSI") {
+      try {
+        const fundamentals = await fetchFundamentalsForLocalUpdate(ticker);
+        storeFundamentalsForLocalUpdate(ticker, fundamentals);
+        fundamentalsUpdated = true;
+      } catch (error) {
+        req.log.warn({ err: error, ticker }, "Fundamental update failed; saved market history remains available");
+      }
+    }
+    res.json(RefreshLocalMarketDataResponse.parse({
+      ticker,
+      updatedRows,
+      source: result.source ?? "Yahoo Finance",
+      fetchedAt: new Date().toISOString(),
+      fundamentalsUpdated,
+    }));
+  } catch (error) {
+    req.log.error({ err: error, ticker }, "Local market data refresh failed");
+    res.status(502).json({ error: `無法更新 ${ticker} 的行情，原有本機資料未被清除` });
+  }
+});
+
 router.get("/market/history/:ticker", async (req, res): Promise<void> => {
   const normalizedTicker = normalizeTickerInput(req.params.ticker);
   const parsedParams = GetMarketHistoryQueryParams.safeParse(req.query);
@@ -271,7 +361,7 @@ router.get("/market/history/:ticker", async (req, res): Promise<void> => {
         ticker,
         name: records[records.length - 1].name,
         currency: records[records.length - 1].currency,
-        source: `${sources} · SQLite 本地快照`,
+        source: `${sources} · SQLite 本地資料庫`,
         fetchedAt: fetchedAt.toISOString(),
         startDate: records[0].tradingDate,
         endDate: records[records.length - 1].tradingDate,

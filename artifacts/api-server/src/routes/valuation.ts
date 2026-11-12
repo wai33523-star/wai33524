@@ -3,11 +3,13 @@ import {
   GetHsiValuationPicksResponse,
   GetValuationAssessmentParams,
   GetValuationAssessmentResponse,
+  RefreshHsiFundamentalsResponse,
 } from "@workspace/api-zod";
 import { getHistoricalMarketData } from "./factors";
 import { hsiCoreUniverse } from "../lib/hsi-universe";
 import { normalizeTickerInput } from "../lib/ticker";
 import { selectValuePicks, valueForMoneyScore } from "../lib/valuation-selection";
+import { isLocalMarketDataMode, loadLocalFundamentals, saveLocalFundamentals } from "../lib/market-snapshot";
 
 type FundamentalPoint = {
   asOfDate: string;
@@ -23,6 +25,15 @@ type FundamentalsResult = {
   annualTotalRevenue: FundamentalPoint[];
   annualNetIncome: FundamentalPoint[];
 };
+
+const emptyFundamentals = (): FundamentalsResult => ({
+  trailingPeRatio: [],
+  forwardPeRatio: [],
+  annualDilutedEPS: [],
+  trailingDilutedEPS: [],
+  annualTotalRevenue: [],
+  annualNetIncome: [],
+});
 
 type YahooTimeseriesEntry = {
   meta?: { type?: string[] };
@@ -81,7 +92,7 @@ function parseSeries(result: YahooTimeseriesEntry[], type: string): FundamentalP
     .sort((a, b) => a.asOfDate.localeCompare(b.asOfDate));
 }
 
-async function fetchYahooFundamentals(ticker: string): Promise<FundamentalsResult> {
+async function fetchYahooFundamentalsFromProvider(ticker: string): Promise<FundamentalsResult> {
   const cached = fundamentalsCache.get(ticker);
   if (cached && cached.expiresAt > Date.now()) return cached.result;
 
@@ -95,6 +106,7 @@ async function fetchYahooFundamentals(ticker: string): Promise<FundamentalsResul
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; Barra-Factor-Analyzer/1.0)",
       },
+      signal: AbortSignal.timeout(15_000),
     });
     if (response.ok) {
       payload = (await response.json()) as YahooTimeseriesResponse;
@@ -119,6 +131,63 @@ async function fetchYahooFundamentals(ticker: string): Promise<FundamentalsResul
   fundamentalsCache.set(ticker, { expiresAt: Date.now() + FUNDAMENTAL_CACHE_TTL_MS, result: parsed });
   return parsed;
 }
+
+async function fetchYahooFundamentals(ticker: string): Promise<FundamentalsResult> {
+  if (isLocalMarketDataMode()) {
+    return loadLocalFundamentals<FundamentalsResult>(ticker) ?? emptyFundamentals();
+  }
+  return fetchYahooFundamentalsFromProvider(ticker);
+}
+
+export async function fetchFundamentalsForLocalUpdate(ticker: string): Promise<FundamentalsResult> {
+  fundamentalsCache.delete(ticker);
+  return fetchYahooFundamentalsFromProvider(ticker);
+}
+
+export function storeFundamentalsForLocalUpdate(
+  ticker: string,
+  fundamentals: FundamentalsResult,
+): void {
+  saveLocalFundamentals(ticker, fundamentals);
+  fundamentalsCache.set(ticker, { expiresAt: Date.now() + FUNDAMENTAL_CACHE_TTL_MS, result: fundamentals });
+}
+
+router.post("/market/refresh-hsi-fundamentals", async (req: Request, res: Response): Promise<void> => {
+  if (!isLocalMarketDataMode()) {
+    res.status(403).json({ error: "恆指基本面更新只在本機執行模式提供" });
+    return;
+  }
+
+  let nextIndex = 0;
+  let updated = 0;
+  let failed = 0;
+  const concurrency = 3;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (nextIndex < hsiCoreUniverse.length) {
+      const candidate = hsiCoreUniverse[nextIndex++];
+      try {
+        const fundamentals = await fetchFundamentalsForLocalUpdate(candidate.ticker);
+        storeFundamentalsForLocalUpdate(candidate.ticker, fundamentals);
+        updated += 1;
+      } catch (error) {
+        failed += 1;
+        req.log.warn(
+          { err: error, ticker: candidate.ticker },
+          "Could not refresh one Hang Seng constituent's fundamentals",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  });
+  await Promise.all(workers);
+
+  res.json(RefreshHsiFundamentalsResponse.parse({
+    attempted: hsiCoreUniverse.length,
+    updated,
+    failed,
+    fetchedAt: new Date().toISOString(),
+  }));
+});
 
 function latest<T extends FundamentalPoint>(series: T[]): T | null {
   return series.length ? series[series.length - 1] : null;
@@ -304,7 +373,9 @@ async function loadHsiValuationPicks() {
     model: "性價比100分：估值折讓45分、EPS增長30分、淨利增長15分、收入增長10分；正 EPS 篩選使用最新年度 EPS，TTM P/E 配對中期參考 TTM EPS，並要求歷史中位數完整，按總分列出前五名",
     limitation: `這是53隻核心恒指候選股中 ${valueEligible.length} 隻正 EPS 股票的公開數據排序，不代表完整恒指93隻成分股；基本面披露日期不一，P/E可能受資料供應商更新時間影響，不構成投資建議。`,
   });
-  hsiValuationCache = { expiresAt: Date.now() + FUNDAMENTAL_CACHE_TTL_MS, response };
+  if (!isLocalMarketDataMode()) {
+    hsiValuationCache = { expiresAt: Date.now() + FUNDAMENTAL_CACHE_TTL_MS, response };
+  }
   return response;
 }
 
@@ -325,7 +396,7 @@ router.get("/valuation/:ticker", async (req, res): Promise<void> => {
 
 router.get("/market/hsi-valuation-picks", async (req: Request, res: Response): Promise<void> => {
   try {
-    if (hsiValuationCache && hsiValuationCache.expiresAt > Date.now()) {
+    if (!isLocalMarketDataMode() && hsiValuationCache && hsiValuationCache.expiresAt > Date.now()) {
       res.json(hsiValuationCache.response);
       return;
     }

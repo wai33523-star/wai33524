@@ -1,4 +1,4 @@
-import { Activity, CircleHelp, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, CircleHelp, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import type { HsiValueRecoverySelection, HsiValuationSelection, ValuationAssessment } from '@workspace/api-client-react';
 
 function pct(value: number | null) {
@@ -77,14 +77,40 @@ type PicksProps = {
   isError: boolean;
   onRetry: () => void;
   onSelectTicker: (ticker: string) => void;
+  isLocalApp?: boolean;
+  isUpdatingFundamentals?: boolean;
+  onUpdateLocalFundamentals?: () => void;
 };
 
-export function HsiValuationPicks({ data, isLoading, isError, onRetry, onSelectTicker }: PicksProps) {
+export function HsiValuationPicks({
+  data,
+  isLoading,
+  isError,
+  onRetry,
+  onSelectTicker,
+  isLocalApp = false,
+  isUpdatingFundamentals = false,
+  onUpdateLocalFundamentals,
+}: PicksProps) {
+  const updateButton = isLocalApp && onUpdateLocalFundamentals ? (
+    <button
+      type="button"
+      onClick={onUpdateLocalFundamentals}
+      disabled={isUpdatingFundamentals}
+      title="連網更新 53 隻核心恒指候選股的公開估值資料，並保存到本機"
+      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#c7ded7] bg-white px-3 py-2 text-xs font-bold text-[#087d68] disabled:cursor-wait disabled:opacity-60"
+      data-testid="button-update-hsi-fundamentals"
+    >
+      <RefreshCw size={13} className={isUpdatingFundamentals ? 'animate-spin' : ''} />
+      {isUpdatingFundamentals ? '更新恒指估值資料中…' : '更新恒指估值資料'}
+    </button>
+  ) : null;
+
   if (isLoading) {
     return <section className="rounded-2xl border border-[#dfe5e4] bg-[#fbfdfc] p-5" data-testid="card-hsi-valuation-loading"><div className="h-5 w-64 animate-pulse rounded bg-[#e5e9e9]" /><div className="mt-4 grid gap-3 md:grid-cols-5">{[1, 2, 3, 4, 5].map((item) => <div key={item} className="h-36 animate-pulse rounded-xl bg-[#eef2f0]" />)}</div></section>;
   }
   if (isError || !data) {
-    return <section className="rounded-2xl border border-[#ecd0ca] bg-[#fffaf9] p-5" data-testid="card-hsi-valuation-error"><div className="font-bold text-[#b04d40]">恒指估值篩選暫時無法完成</div><p className="mt-1 text-[11px] text-[#8b716c]">需要候選股的公開 EPS、收入及 P/E 歷史資料。</p><button onClick={onRetry} className="mt-3 rounded-lg bg-[#23383c] px-4 py-2 text-xs font-bold text-white">重新篩選</button></section>;
+    return <section className="rounded-2xl border border-[#ecd0ca] bg-[#fffaf9] p-5" data-testid="card-hsi-valuation-error"><div className="font-bold text-[#b04d40]">恒指估值篩選暫時無法完成</div><p className="mt-1 text-[11px] text-[#8b716c]">{isLocalApp ? '首次更新會連網嘗試取得 53 隻核心恒指候選股的公開估值資料；成功後保存在本機，日常分析不會連網。' : '需要候選股的公開 EPS、收入及 P/E 歷史資料。'}</p><button onClick={onRetry} className="mt-3 rounded-lg bg-[#23383c] px-4 py-2 text-xs font-bold text-white">重新篩選</button>{updateButton}</section>;
   }
 
   return (
@@ -94,7 +120,7 @@ export function HsiValuationPicks({ data, isLoading, isError, onRetry, onSelectT
           <div className="flex items-center gap-2"><TrendingUp size={16} className="text-[#07876d]" /><h2 className="text-[15px] font-extrabold text-[#26373c]">恒指五隻性價比最高</h2><span className="rounded bg-[#e9f4f0] px-1.5 py-0.5 text-[9px] font-bold text-[#07876d]">AUTO · 15 MIN</span></div>
           <p className="mt-1 text-[11px] text-[#899599]">截至 {data.asOf} · 已評估 {data.evaluatedCount} / 核心候選 {data.universeSize} · 完全符合 {data.qualifiedCount} 隻</p>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[#899599]"><TrendingDown size={13} className="text-[#d6904a]" />估值折讓不等於價格必然反彈</div>
+         <div className="flex flex-wrap items-center gap-2"><div className="flex items-center gap-1.5 text-[10px] text-[#899599]"><TrendingDown size={13} className="text-[#d6904a]" />估值折讓不等於價格必然反彈</div>{updateButton}</div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-5">
         {data.picks.map((pick, index) => (

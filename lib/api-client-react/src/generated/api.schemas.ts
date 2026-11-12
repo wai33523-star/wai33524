@@ -251,6 +251,30 @@ export interface MarketHistory {
   points: MarketHistoryPoint[];
 }
 
+export interface MarketDataRefreshRequest {
+  /**
+     * @minLength 1
+     * @maxLength 20
+     * @pattern ^[A-Za-z0-9._=^=-]+$
+     */
+  ticker: string;
+}
+
+export interface MarketDataRefreshResponse {
+  ticker: string;
+  updatedRows: number;
+  source: string;
+  fetchedAt: string;
+  fundamentalsUpdated: boolean;
+}
+
+export interface HsiFundamentalsRefreshResponse {
+  attempted: number;
+  updated: number;
+  failed: number;
+  fetchedAt: string;
+}
+
 export interface HsiQualityPick {
   rank: number;
   ticker: string;

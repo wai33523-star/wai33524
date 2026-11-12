@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initializeLocalMarketDatabase, isLocalMarketDataMode } from "./lib/market-snapshot";
 
 const rawPort = process.env["PORT"];
 
@@ -15,7 +16,10 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+initializeLocalMarketDatabase();
+
+const listenAddress = isLocalMarketDataMode() ? "127.0.0.1" : "0.0.0.0";
+app.listen(port, listenAddress, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);

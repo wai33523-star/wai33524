@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetFactorAnalysisQueryKey,
   getGetHistoricalBacktestQueryKey,
@@ -26,6 +27,8 @@ import {
   useGetMarketHistory,
   useGetRealtimeMarketData,
   useGetValuationAssessment,
+  refreshLocalMarketData,
+  refreshHsiFundamentals,
   type GetHistoricalBacktestParams,
   type HistoricalBacktest,
   type MarketHistory,
@@ -51,6 +54,7 @@ import {
   X,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from '@/hooks/use-toast';
 import { HsiHistoryPanel } from '@/components/hsi-history-panel';
 import { HsiQualityPicks } from '@/components/hsi-quality-picks';
 import { HsiStockFinder } from '@/components/hsi-stock-finder';
@@ -485,6 +489,8 @@ function BacktestPanel({ data, isLoading, isError, onRetry }: { data?: Historica
 }
 
 export default function Home() {
+  const queryClient = useQueryClient();
+  const isLocalApp = import.meta.env.VITE_LOCAL_APP === 'true';
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputTicker, setInputTicker] = useState('0700.HK');
@@ -499,6 +505,8 @@ export default function Home() {
   const [shortDays, setShortDays] = useState(21);
   const [mediumDays, setMediumDays] = useState(63);
   const [longDays, setLongDays] = useState(252);
+  const [isUpdatingMarket, setIsUpdatingMarket] = useState(false);
+  const [isUpdatingHsiFundamentals, setIsUpdatingHsiFundamentals] = useState(false);
   const { data, isLoading, isFetching, isError, error, refetch } = useGetFactorAnalysis(ticker, {
     query: {
       queryKey: getGetFactorAnalysisQueryKey(ticker),
@@ -624,6 +632,8 @@ export default function Home() {
     },
   });
   const isRefreshing = isFetching
+    || isUpdatingMarket
+    || isUpdatingHsiFundamentals
     || isHsiFetching
     || hsiHistoryQuery.isFetching
     || hsiQualityQuery.isFetching
@@ -636,6 +646,83 @@ export default function Home() {
     || hsiValuationQuery.isFetching
     || hsiValueRecoveryQuery.isFetching
     || (backtestRequested && backtestQuery.isFetching);
+
+  const handleRefresh = async () => {
+    if (isLocalApp) {
+      setIsUpdatingMarket(true);
+      const tickersToUpdate = [...new Set([ticker, '^HSI'])];
+      try {
+        const results = await Promise.allSettled(
+          tickersToUpdate.map((item) => refreshLocalMarketData({ ticker: item })),
+        );
+        const successful = results.filter((result) => result.status === 'fulfilled');
+        await queryClient.invalidateQueries();
+        if (successful.length === 0) {
+          const firstError = results.find((result) => result.status === 'rejected');
+          const message = firstError?.status === 'rejected' && firstError.reason instanceof Error
+            ? firstError.reason.message
+            : '請檢查網絡連線後重試。';
+          toast({ title: '行情更新失敗', description: message, variant: 'destructive' });
+          return;
+        }
+        const failedCount = results.length - successful.length;
+        const fundamentalsUpdated = successful.some(
+          (result) => result.status === 'fulfilled' && result.value.fundamentalsUpdated,
+        );
+        toast({
+          title: failedCount ? '部分行情已更新' : '行情已更新並保存到本機',
+          description: `${successful.length} 個代號已寫入本機 SQLite。${fundamentalsUpdated ? '公司基本面資料亦已更新。' : ''}${failedCount ? `另有 ${failedCount} 個代號更新失敗。` : ''}`,
+          variant: failedCount ? 'destructive' : 'default',
+        });
+      } catch (error) {
+        toast({
+          title: '行情更新失敗',
+          description: error instanceof Error ? error.message : '請檢查網絡連線後重試。',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsUpdatingMarket(false);
+      }
+      return;
+    }
+
+    await Promise.all([
+      refetch(),
+      refetchHsi(),
+      hsiHistoryQuery.refetch(),
+      hsiQualityQuery.refetch(),
+      hsiLaggardsQuery.refetch(),
+      hsiRecoveryQuery.refetch(),
+      hsiLeaderQuery.refetch(),
+      hsiLeaderPullbackQuery.refetch(),
+      hsiMoversQuery.refetch(),
+      valuationQuery.refetch(),
+      hsiValuationQuery.refetch(),
+      hsiValueRecoveryQuery.refetch(),
+      ...(backtestRequested ? [backtestQuery.refetch()] : []),
+    ]);
+  };
+
+  const handleRefreshHsiFundamentals = async () => {
+    setIsUpdatingHsiFundamentals(true);
+    try {
+      const result = await refreshHsiFundamentals();
+      await queryClient.invalidateQueries();
+      toast({
+        title: '恒指估值資料更新完成',
+        description: `嘗試 ${result.attempted} 隻成分股，成功保存 ${result.updated} 隻${result.failed ? `，${result.failed} 隻來源暫時無法提供資料` : ''}。`,
+        variant: result.failed ? 'destructive' : 'default',
+      });
+    } catch (error) {
+      toast({
+        title: '恒指估值資料更新失敗',
+        description: error instanceof Error ? error.message : '請檢查網絡連線後重試。',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingHsiFundamentals(false);
+    }
+  };
 
   const submitTicker = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -715,8 +802,8 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-               <div className="hidden items-center gap-2 text-[11px] text-[#7d8c90] sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${isRefreshing ? 'animate-pulse bg-[#d6a132]' : 'bg-[#159b7d]'}`} />{isRefreshing ? '同步中' : '資料已同步'}</div>
-                <button className="flex h-9 items-center gap-2 rounded-lg border border-[#d8e1de] bg-[#fbfdfc] px-3 text-[11px] font-semibold text-[#52646a] transition-colors hover:border-[#a4c9be] hover:text-[#087d68]" onClick={() => { void Promise.all([refetch(), refetchHsi(), hsiHistoryQuery.refetch(), hsiQualityQuery.refetch(), hsiLaggardsQuery.refetch(), hsiRecoveryQuery.refetch(), hsiLeaderQuery.refetch(), hsiLeaderPullbackQuery.refetch(), hsiMoversQuery.refetch(), valuationQuery.refetch(), hsiValuationQuery.refetch(), hsiValueRecoveryQuery.refetch(), ...(backtestRequested ? [backtestQuery.refetch()] : [])]); }} disabled={isRefreshing} data-testid="button-refresh-data"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> <span className="hidden sm:inline">重新整理</span></button>
+               <div className="hidden items-center gap-2 text-[11px] text-[#7d8c90] sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${isRefreshing ? 'animate-pulse bg-[#d6a132]' : 'bg-[#159b7d]'}`} />{isUpdatingMarket ? '更新行情中' : isLocalApp ? '本機資料庫' : isRefreshing ? '同步中' : '資料已同步'}</div>
+                <button className="flex h-9 items-center gap-2 rounded-lg border border-[#d8e1de] bg-[#fbfdfc] px-3 text-[11px] font-semibold text-[#52646a] transition-colors hover:border-[#a4c9be] hover:text-[#087d68]" onClick={() => { void handleRefresh(); }} disabled={isRefreshing} data-testid="button-refresh-data"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> <span className="hidden sm:inline">{isLocalApp ? '更新行情' : '重新整理'}</span></button>
             </div>
           </div>
         </header>
@@ -784,6 +871,9 @@ export default function Home() {
                isError={hsiValuationQuery.isError}
                onRetry={() => { void hsiValuationQuery.refetch(); }}
                onSelectTicker={(selectedTicker) => { setInputTicker(selectedTicker); setTicker(selectedTicker); }}
+                isLocalApp={isLocalApp}
+                isUpdatingFundamentals={isUpdatingHsiFundamentals}
+                onUpdateLocalFundamentals={isLocalApp ? () => { void handleRefreshHsiFundamentals(); } : undefined}
              />
            </div>
 

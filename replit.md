@@ -5,17 +5,19 @@
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm local` — run the complete app on this computer at `http://127.0.0.1:19358` (Node.js 24, pnpm 10)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run snapshot:export` — refresh the checked-in read-only SQLite market snapshot from the current Replit PostgreSQL database
-- Runtime does not require `DATABASE_URL`; the API reads the packaged SQLite snapshot and does not persist refreshed market data.
+- `pnpm local` creates/uses a persistent writable SQLite database at `~/.barra-factor-analyzer/market-data.sqlite` (or `MARKET_DATABASE_PATH`). Ordinary analysis reads this local file; only the explicit update action contacts external market-data providers and saves updates locally.
+- The hosted Replit app remains read-only and uses the packaged SQLite snapshot; runtime does not require `DATABASE_URL`.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- Data: read-only SQLite snapshot bundled with the API artifact; Replit PostgreSQL is retained as a source/backup for snapshot exports.
+- Data: persistent writable SQLite in local mode, read-only packaged SQLite snapshot in Replit mode; Replit PostgreSQL is retained as a source/backup for snapshot exports.
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -31,7 +33,7 @@
 
 - 使用 Yahoo Finance 公開 chart API 取得日線資料，伺服器端完成計算，前端只負責呈現結果。
 - API 的历史回退资料及备用即时报价来自随服务发布的只读 SQLite 快照；刷新取得的外部行情不会写入快照。
-- 即时报价优先 Yahoo Finance，失败时回退 Sina Finance，再失败时读取本地快照。
+- 本機模式的即時報價只讀取 SQLite 收市價；Replit 模式優先 Yahoo Finance，失敗時回退 Sina Finance，再讀取快照。
 - Sina 即时报价不会混入 EOD 因子或历史回测，避免盘中未完成数据污染统计结果。
 - 恆生指數（`^HSI`）的歷史因子資料優先使用 Investing.com 商品 ID 179，接口受限時回退至 Yahoo Finance。
 - 股票輸入會先清洗：恆指別名統一為 `^HSI`，純數字港股代碼會補足四位數並加上 `.HK`。

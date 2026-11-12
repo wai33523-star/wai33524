@@ -6,11 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
@@ -22,17 +26,20 @@ import type {
   GetMarketHistoryParams,
   HealthStatus,
   HistoricalBacktest,
+  HsiFundamentalsRefreshResponse,
   HsiMovers,
   HsiQualitySelection,
   HsiValuationSelection,
   HsiValueRecoverySelection,
+  MarketDataRefreshRequest,
+  MarketDataRefreshResponse,
   MarketHistory,
   RealtimeMarketData,
   ValuationAssessment
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -459,6 +466,150 @@ export function useGetMarketHistory<TData = Awaited<ReturnType<typeof getMarketH
 
 
 
+
+export const getRefreshLocalMarketDataUrl = () => {
+
+
+
+
+  return `/api/market/refresh`
+}
+
+/**
+ * Explicitly fetches daily market history for the requested ticker and saves it to the user's local SQLite database. Available only when the application runs in local mode.
+ * @summary Fetch and save updated market data to local SQLite
+ */
+export const refreshLocalMarketData = async (marketDataRefreshRequest: MarketDataRefreshRequest, options?: Parameters<typeof customFetch>[1]): Promise<MarketDataRefreshResponse> => {
+
+  return customFetch<MarketDataRefreshResponse>(getRefreshLocalMarketDataUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(marketDataRefreshRequest)
+  }
+);}
+
+
+
+
+
+export const getRefreshLocalMarketDataMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshLocalMarketData>>, TError,{data: BodyType<MarketDataRefreshRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshLocalMarketData>>, TError,{data: BodyType<MarketDataRefreshRequest>}, TContext> => {
+
+const mutationKey = ['refreshLocalMarketData'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshLocalMarketData>>, {data: BodyType<MarketDataRefreshRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  refreshLocalMarketData(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshLocalMarketDataMutationResult = NonNullable<Awaited<ReturnType<typeof refreshLocalMarketData>>>
+    export type RefreshLocalMarketDataMutationBody = BodyType<MarketDataRefreshRequest>
+    export type RefreshLocalMarketDataMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Fetch and save updated market data to local SQLite
+ */
+export const useRefreshLocalMarketData = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshLocalMarketData>>, TError,{data: BodyType<MarketDataRefreshRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshLocalMarketData>>,
+        TError,
+        {data: BodyType<MarketDataRefreshRequest>},
+        TContext
+      > => {
+      return useMutation(getRefreshLocalMarketDataMutationOptions(options));
+    }
+
+export const getRefreshHsiFundamentalsUrl = () => {
+
+
+
+
+  return `/api/market/refresh-hsi-fundamentals`
+}
+
+/**
+ * Explicitly fetches public fundamentals for the configured Hang Seng candidate universe and stores each successful result in local SQLite. Available only in local mode.
+ * @summary Update Hang Seng constituent fundamentals for local use
+ */
+export const refreshHsiFundamentals = async ( options?: Parameters<typeof customFetch>[1]): Promise<HsiFundamentalsRefreshResponse> => {
+
+  return customFetch<HsiFundamentalsRefreshResponse>(getRefreshHsiFundamentalsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshHsiFundamentalsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshHsiFundamentals>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshHsiFundamentals>>, TError,void, TContext> => {
+
+const mutationKey = ['refreshHsiFundamentals'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshHsiFundamentals>>, void> = () => {
+
+
+          return  refreshHsiFundamentals(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshHsiFundamentalsMutationResult = NonNullable<Awaited<ReturnType<typeof refreshHsiFundamentals>>>
+
+    export type RefreshHsiFundamentalsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update Hang Seng constituent fundamentals for local use
+ */
+export const useRefreshHsiFundamentals = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshHsiFundamentals>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshHsiFundamentals>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRefreshHsiFundamentalsMutationOptions(options));
+    }
 
 export const getGetHistoricalBacktestUrl = (ticker: string,
     params?: GetHistoricalBacktestParams,) => {

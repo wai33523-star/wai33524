@@ -183,6 +183,41 @@ export const GetMarketHistoryResponse = zod.object({
 
 
 /**
+ * Explicitly fetches daily market history for the requested ticker and saves it to the user's local SQLite database. Available only when the application runs in local mode.
+ * @summary Fetch and save updated market data to local SQLite
+ */
+export const refreshLocalMarketDataBodyTickerMax = 20;
+
+
+export const refreshLocalMarketDataBodyTickerRegExp = new RegExp('^[A-Za-z0-9._=^=-]+$');
+
+
+export const RefreshLocalMarketDataBody = zod.object({
+  "ticker": zod.string().min(1).max(refreshLocalMarketDataBodyTickerMax).regex(refreshLocalMarketDataBodyTickerRegExp)
+})
+
+export const RefreshLocalMarketDataResponse = zod.object({
+  "ticker": zod.string(),
+  "updatedRows": zod.number(),
+  "source": zod.string(),
+  "fetchedAt": zod.string(),
+  "fundamentalsUpdated": zod.boolean()
+})
+
+
+/**
+ * Explicitly fetches public fundamentals for the configured Hang Seng candidate universe and stores each successful result in local SQLite. Available only in local mode.
+ * @summary Update Hang Seng constituent fundamentals for local use
+ */
+export const RefreshHsiFundamentalsResponse = zod.object({
+  "attempted": zod.number(),
+  "updated": zod.number(),
+  "failed": zod.number(),
+  "fetchedAt": zod.string()
+})
+
+
+/**
  * Backtests an explainable RSTR and STOM confirmation signal using end-of-day data.
  * @summary Run EOD factor signal backtest
  */

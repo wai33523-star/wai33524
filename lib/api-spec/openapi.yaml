@@ -189,6 +189,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /market/refresh:
+    post:
+      operationId: refreshLocalMarketData
+      tags: [market]
+      summary: Fetch and save updated market data to local SQLite
+      description: Explicitly fetches daily market history for the requested ticker and saves it to the user's local SQLite database. Available only when the application runs in local mode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketDataRefreshRequest"
+      responses:
+        "200":
+          description: Updated history saved locally
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDataRefreshResponse"
+        "400":
+          description: Invalid ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Local updates are unavailable in read-only hosted mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Market data provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /market/refresh-hsi-fundamentals:
+    post:
+      operationId: refreshHsiFundamentals
+      tags: [market]
+      summary: Update Hang Seng constituent fundamentals for local use
+      description: Explicitly fetches public fundamentals for the configured Hang Seng candidate universe and stores each successful result in local SQLite. Available only in local mode.
+      responses:
+        "200":
+          description: Fundamentals update attempt completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HsiFundamentalsRefreshResponse"
+        "403":
+          description: Local updates are unavailable in read-only hosted mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/{ticker}:
     get:
       operationId: getHistoricalBacktest
@@ -912,6 +968,41 @@ components:
         - startDate
         - endDate
         - points
+    MarketDataRefreshRequest:
+      type: object
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 20
+          pattern: "^[A-Za-z0-9._=^=-]+$"
+      required: [ticker]
+    MarketDataRefreshResponse:
+      type: object
+      properties:
+        ticker:
+          type: string
+        updatedRows:
+          type: number
+        source:
+          type: string
+        fetchedAt:
+          type: string
+        fundamentalsUpdated:
+          type: boolean
+      required: [ticker, updatedRows, source, fetchedAt, fundamentalsUpdated]
+    HsiFundamentalsRefreshResponse:
+      type: object
+      properties:
+        attempted:
+          type: number
+        updated:
+          type: number
+        failed:
+          type: number
+        fetchedAt:
+          type: string
+      required: [attempted, updated, failed, fetchedAt]
     HsiQualityPick:
       type: object
       properties:

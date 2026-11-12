@@ -36,7 +36,7 @@ type YahooChartResponse = {
   };
 };
 
-type MarketRow = {
+export type MarketRow = {
   timestamp: number;
   /** Adjusted close used for factor and return calculations. */
   close: number;
@@ -45,7 +45,7 @@ type MarketRow = {
   volume: number;
 };
 
-type MarketFetchResult = {
+export type MarketFetchResult = {
   rows: MarketRow[];
   name?: string;
   currency?: string;
@@ -89,6 +89,7 @@ async function fetchInvestingHsiRows(months = 28): Promise<MarketRow[]> {
         Origin: "https://www.investing.com",
         Referer: "https://www.investing.com/",
       },
+      signal: AbortSignal.timeout(15_000),
     },
   );
 
@@ -135,6 +136,7 @@ async function fetchYahooRows(ticker: string, months = 28): Promise<MarketFetchR
           Accept: "application/json",
           "User-Agent": "Mozilla/5.0 (compatible; Barra-Factor-Analyzer/1.0)",
         },
+        signal: AbortSignal.timeout(15_000),
       },
     );
     if (response.ok) {
@@ -220,10 +222,46 @@ async function loadStoredMarketRows(
   };
 }
 
+export async function fetchExternalMarketDataForUpdate(
+  ticker: string,
+  months = 28,
+): Promise<MarketFetchResult> {
+  const errors: unknown[] = [];
+  if (ticker === "^HSI") {
+    try {
+      const rows = await fetchInvestingHsiRows(months);
+      if (!rows.length) throw new Error("Investing.com returned no rows");
+      return {
+        rows: rows.map((row) => ({ ...row, rawClose: row.close })),
+        name: "HANG SENG INDEX",
+        currency: "HKD",
+        source: "Investing.com",
+      };
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  try {
+    const result = await fetchYahooRows(ticker, months);
+    if (!result.rows.length) throw new Error("Yahoo Finance returned no rows");
+    return { ...result, source: "Yahoo Finance" };
+  } catch (error) {
+    errors.push(error);
+  }
+  throw new AggregateError(errors, `No external market history available for ${ticker}`);
+}
+
 async function getHistoricalMarketData(
   ticker: string,
   months: number,
 ): Promise<MarketFetchResult> {
+  if (process.env.MARKET_DATA_MODE === "local") {
+    const stored = await loadStoredMarketRows(ticker, months);
+    if (stored) return stored;
+    throw new Error(`本機 SQLite 沒有 ${ticker} 的行情，請先按「更新行情」。`);
+  }
+
   const errors: unknown[] = [];
   if (ticker === "^HSI") {
     try {

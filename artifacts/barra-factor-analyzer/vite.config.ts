@@ -69,6 +69,16 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    ...(process.env.LOCAL_APP === 'true'
+      ? {
+          proxy: {
+            '/api': {
+              target: `http://127.0.0.1:${process.env.LOCAL_API_PORT ?? '8080'}`,
+              changeOrigin: true,
+            },
+          },
+        }
+      : {}),
     fs: {
       strict: true,
     },

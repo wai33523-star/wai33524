@@ -4,6 +4,7 @@ import { hsiCoreUniverse } from "../lib/hsi-universe";
 import { selectValuePicks } from "../lib/valuation-selection";
 import { loadRankedMetrics, rankRecoveryMetrics } from "./hsi-quality";
 import { loadHsiValuationAssessments } from "./valuation";
+import { isLocalMarketDataMode } from "../lib/market-snapshot";
 
 const router: IRouter = Router();
 const CACHE_TTL_MS = 15 * 60_000;
@@ -80,7 +81,7 @@ async function loadValueRecoveryPicks() {
 
 router.get("/market/hsi-value-recovery-picks", async (req: Request, res: Response): Promise<void> => {
   try {
-    if (cache && cache.expiresAt > Date.now()) {
+    if (!isLocalMarketDataMode() && cache && cache.expiresAt > Date.now()) {
       res.json(cache.response);
       return;
     }
@@ -90,7 +91,9 @@ router.get("/market/hsi-value-recovery-picks", async (req: Request, res: Respons
       });
     }
     const response = await pending;
-    cache = { expiresAt: Date.now() + CACHE_TTL_MS, response };
+    if (!isLocalMarketDataMode()) {
+      cache = { expiresAt: Date.now() + CACHE_TTL_MS, response };
+    }
     res.json(response);
   } catch (error) {
     req.log.error({ err: error }, "HSI value recovery selection failed");
