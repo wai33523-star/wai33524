@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "node scripts/preinstall.mjs",
     "local": "node scripts/start-local.mjs",
+    "windows:installer": "node scripts/build-windows-installer.mjs",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

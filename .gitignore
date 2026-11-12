@@ -4,6 +4,7 @@
 dist
 tmp
 .local-data/
+generated-artifacts/
 out-tsc
 *.tsbuildinfo
 .expo

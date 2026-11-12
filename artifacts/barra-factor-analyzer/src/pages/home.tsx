@@ -776,6 +776,28 @@ export default function Home() {
     <div className="app-grain flex min-h-[100dvh] bg-[#eef1f1] font-sans text-[#213238]">
       <SideNavigation isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <main className="min-w-0 flex-1">
+        <div className="border-b border-[#d4e6df] bg-[#eaf4ef] px-4 py-2.5 md:px-8 lg:px-11" data-testid="windows-download-banner">
+          <div className="mx-auto flex max-w-[1410px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-[11px] text-[#46665e]">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-[#087d68] shadow-sm">
+                <Download size={15} />
+              </span>
+              <div>
+                <div className="font-bold text-[#294941]">Windows 11 桌面安裝版（x64）</div>
+                <div className="text-[10px] text-[#6e8980]">行情資料保存在本機；只有手動更新行情時才連網。</div>
+              </div>
+            </div>
+            <a
+              href="https://github.com/wai33523-star/wai33524/releases/latest/download/BarraFactorAnalyzer-Setup.exe"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-lg bg-[#176b59] px-3 text-[10px] font-bold text-white transition-colors hover:bg-[#105644] sm:self-auto"
+              data-testid="button-download-windows"
+            >
+              下載安裝程式 <ArrowUpRight size={13} />
+            </a>
+          </div>
+        </div>
         <header className="sticky top-0 z-20 border-b border-[#dfe5e4] bg-[#f7f9f8]/95 backdrop-blur-md">
           <div className="flex h-[82px] items-center justify-between px-5 md:px-8 lg:px-11">
             <div className="flex items-center gap-3">
