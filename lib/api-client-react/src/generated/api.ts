@@ -387,8 +387,8 @@ export const getGetMarketHistoryUrl = (ticker: string,
 }
 
 /**
- * Returns the most recent complete daily rows stored in PostgreSQL for a ticker.
- * @summary Get recent daily market data from the database
+ * Returns the most recent complete daily rows stored in the read-only SQLite market snapshot for a ticker.
+ * @summary Get recent daily market data from the local snapshot
  */
 export const getMarketHistory = async (ticker: string,
     params?: GetMarketHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<MarketHistory> => {
@@ -438,7 +438,7 @@ export type GetMarketHistoryQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get recent daily market data from the database
+ * @summary Get recent daily market data from the local snapshot
  */
 
 export function useGetMarketHistory<TData = Awaited<ReturnType<typeof getMarketHistory>>, TError = ErrorType<ErrorResponse>>(

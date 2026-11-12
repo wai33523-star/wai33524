@@ -1,14 +1,12 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter } from "express";
 import {
   GetMarketHistoryQueryParams,
   GetMarketHistoryResponse,
   GetRealtimeMarketDataParams,
   GetRealtimeMarketDataResponse,
 } from "@workspace/api-zod";
-import { getHistoricalMarketData } from "./factors";
 import { normalizeTickerInput } from "../lib/ticker";
-import { db, marketDailyPricesTable, marketSnapshotsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { loadNewestSnapshotHistory, loadSnapshotQuote } from "../lib/market-snapshot";
 
 type YahooChartResponse = {
   chart?: {
@@ -42,33 +40,6 @@ type SnapshotResult = Snapshot & {
 
 const router: IRouter = Router();
 const YAHOO_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
-const HSI_HISTORY_REFRESH_INTERVAL_MS = 5 * 60_000;
-let hsiHistoryRefreshAt = 0;
-let hsiHistoryRefreshPromise: Promise<void> | null = null;
-
-async function refreshHsiHistoryIfStale(req: Request): Promise<void> {
-  if (Date.now() - hsiHistoryRefreshAt < HSI_HISTORY_REFRESH_INTERVAL_MS) return;
-
-  if (!hsiHistoryRefreshPromise) {
-    hsiHistoryRefreshPromise = getHistoricalMarketData("^HSI", 28)
-      .then((result) => {
-        hsiHistoryRefreshAt = Date.now();
-        req.log.info(
-          { rows: result.rows.length, source: result.source },
-          "HSI historical data refresh completed",
-        );
-      })
-      .catch((error) => {
-        hsiHistoryRefreshAt = Date.now();
-        req.log.warn({ err: error }, "HSI historical refresh unavailable; serving stored data");
-      })
-      .finally(() => {
-        hsiHistoryRefreshPromise = null;
-      });
-  }
-
-  await hsiHistoryRefreshPromise;
-}
 
 function latestSnapshot(payload: YahooChartResponse): Snapshot | null {
   const chart = payload.chart?.result?.[0];
@@ -166,44 +137,15 @@ async function fetchSinaSnapshot(ticker: string): Promise<SnapshotResult> {
   };
 }
 
-async function persistSnapshot(ticker: string, snapshot: SnapshotResult): Promise<void> {
-  await db
-    .insert(marketSnapshotsTable)
-    .values({
-      ticker,
-      name: snapshot.name,
-      currency: snapshot.currency,
-      latestPrice: snapshot.price,
-      observedAt: new Date(snapshot.timestamp * 1000),
-      source: snapshot.source,
-      fetchedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: marketSnapshotsTable.ticker,
-      set: {
-        name: snapshot.name,
-        currency: snapshot.currency,
-        latestPrice: snapshot.price,
-        observedAt: new Date(snapshot.timestamp * 1000),
-        source: snapshot.source,
-        fetchedAt: new Date(),
-      },
-    });
-}
-
 async function loadStoredSnapshot(ticker: string): Promise<SnapshotResult | null> {
-  const [record] = await db
-    .select()
-    .from(marketSnapshotsTable)
-    .where(eq(marketSnapshotsTable.ticker, ticker))
-    .limit(1);
+  const record = loadSnapshotQuote(ticker);
   if (!record) return null;
   return {
     timestamp: Math.floor(record.observedAt.getTime() / 1000),
     price: record.latestPrice,
     name: record.name,
     currency: record.currency,
-    source: `${record.source}（資料庫）`,
+    source: `${record.source}（本地快照）`,
   };
 }
 
@@ -264,10 +206,6 @@ router.get("/market/realtime/:ticker", async (req, res): Promise<void> => {
       res.status(502).json({ error: "目前沒有可用的市場價格資料" });
       return;
     }
-    if (!snapshotResult.source.includes("資料庫")) {
-      await persistSnapshot(ticker, snapshotResult);
-    }
-
     const result = {
       ticker,
       name: snapshotResult.name,
@@ -303,19 +241,10 @@ router.get("/market/history/:ticker", async (req, res): Promise<void> => {
   const days = parsedParams.data.days;
 
   try {
-    if (ticker === "^HSI") {
-      await refreshHsiHistoryIfStale(req);
-    }
-
-    const newestFirst = await db
-      .select()
-      .from(marketDailyPricesTable)
-      .where(eq(marketDailyPricesTable.ticker, ticker))
-      .orderBy(desc(marketDailyPricesTable.tradingDate))
-      .limit(days);
+    const newestFirst = loadNewestSnapshotHistory(ticker, days);
 
     if (!newestFirst.length) {
-      res.status(404).json({ error: "資料庫沒有這個代號的日線資料" });
+      res.status(404).json({ error: "本地快照沒有這個代號的日線資料" });
       return;
     }
 
@@ -342,7 +271,7 @@ router.get("/market/history/:ticker", async (req, res): Promise<void> => {
         ticker,
         name: records[records.length - 1].name,
         currency: records[records.length - 1].currency,
-        source: `${sources} · PostgreSQL`,
+        source: `${sources} · SQLite 本地快照`,
         fetchedAt: fetchedAt.toISOString(),
         startDate: records[0].tradingDate,
         endDate: records[records.length - 1].tradingDate,
@@ -350,8 +279,8 @@ router.get("/market/history/:ticker", async (req, res): Promise<void> => {
       }),
     );
   } catch (error) {
-    req.log.error({ err: error, ticker }, "Stored market history query failed");
-    res.status(500).json({ error: "讀取資料庫日線資料時發生錯誤" });
+    req.log.error({ err: error, ticker }, "Local market snapshot query failed");
+    res.status(500).json({ error: "讀取本地日線快照時發生錯誤" });
   }
 });
 

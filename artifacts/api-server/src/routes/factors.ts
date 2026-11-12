@@ -7,8 +7,7 @@ import {
 import { normalizeTickerInput } from "../lib/ticker";
 import { calculateCostMetrics } from "../lib/backtest-cost";
 import { rollingZScore } from "../lib/factor-math";
-import { db, marketDailyPricesTable } from "@workspace/db";
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { loadSnapshotHistoryFromDate } from "../lib/market-snapshot";
 
 type YahooChartResponse = {
   chart?: {
@@ -200,60 +199,13 @@ function toDateString(timestamp: number): string {
   return new Date(timestamp * 1000).toISOString().slice(0, 10);
 }
 
-async function persistMarketRows(
-  ticker: string,
-  result: MarketFetchResult,
-  source: string,
-): Promise<void> {
-  if (!result.rows.length) return;
-  const name = result.name ?? ticker;
-  const currency = result.currency ?? (ticker.endsWith(".HK") || ticker === "^HSI" ? "HKD" : "—");
-  const values = result.rows.map((row) => ({
-    ticker,
-    tradingDate: toDateString(row.timestamp),
-    adjustedClose: row.close,
-    rawClose: row.rawClose ?? row.close,
-    volume: row.volume,
-    name,
-    currency,
-    source,
-    fetchedAt: new Date(),
-  }));
-  for (let index = 0; index < values.length; index += 500) {
-    await db
-      .insert(marketDailyPricesTable)
-      .values(values.slice(index, index + 500))
-      .onConflictDoUpdate({
-        target: [marketDailyPricesTable.ticker, marketDailyPricesTable.tradingDate],
-        set: {
-          adjustedClose: sql`excluded.adjusted_close`,
-          rawClose: sql`excluded.raw_close`,
-          volume: sql`excluded.volume`,
-          name: sql`excluded.name`,
-          currency: sql`excluded.currency`,
-          source: sql`excluded.source`,
-          fetchedAt: sql`excluded.fetched_at`,
-        },
-      });
-  }
-}
-
 async function loadStoredMarketRows(
   ticker: string,
   months: number,
 ): Promise<MarketFetchResult | null> {
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - months);
-  const records = await db
-    .select()
-    .from(marketDailyPricesTable)
-    .where(
-      and(
-        eq(marketDailyPricesTable.ticker, ticker),
-        gte(marketDailyPricesTable.tradingDate, dateParameter(startDate)),
-      ),
-    )
-    .orderBy(asc(marketDailyPricesTable.tradingDate));
+  const records = loadSnapshotHistoryFromDate(ticker, dateParameter(startDate));
   if (!records.length) return null;
   return {
     rows: records.map((record) => ({
@@ -264,7 +216,7 @@ async function loadStoredMarketRows(
     })),
     name: records[records.length - 1].name,
     currency: records[records.length - 1].currency,
-    source: `${records[records.length - 1].source}（資料庫）`,
+    source: `${records[records.length - 1].source}（本地快照）`,
   };
 }
 
@@ -278,7 +230,6 @@ async function getHistoricalMarketData(
       const rows = await fetchInvestingHsiRows(months);
       if (!rows.length) throw new Error("Investing.com returned no rows");
       const result = { rows, name: "HANG SENG INDEX", currency: "HKD", source: "Investing.com" };
-      await persistMarketRows(ticker, result, result.source);
       return result;
     } catch (error) {
       errors.push(error);
@@ -289,7 +240,6 @@ async function getHistoricalMarketData(
     const result = await fetchYahooRows(ticker, months);
     if (!result.rows.length) throw new Error("Yahoo Finance returned no rows");
     result.source = "Yahoo Finance";
-    await persistMarketRows(ticker, result, result.source);
     return result;
   } catch (error) {
     errors.push(error);
@@ -297,7 +247,7 @@ async function getHistoricalMarketData(
 
   const stored = await loadStoredMarketRows(ticker, months);
   if (stored) return stored;
-  throw new AggregateError(errors, `No external or stored history available for ${ticker}`);
+  throw new AggregateError(errors, `No external or local snapshot history available for ${ticker}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

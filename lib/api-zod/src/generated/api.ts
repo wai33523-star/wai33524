@@ -142,8 +142,8 @@ export const GetRealtimeMarketDataResponse = zod.object({
 
 
 /**
- * Returns the most recent complete daily rows stored in PostgreSQL for a ticker.
- * @summary Get recent daily market data from the database
+ * Returns the most recent complete daily rows stored in the read-only SQLite market snapshot for a ticker.
+ * @summary Get recent daily market data from the local snapshot
  */
 export const getMarketHistoryPathTickerMax = 20;
 
@@ -161,7 +161,7 @@ export const getMarketHistoryQueryDaysMax = 90;
 
 
 export const GetMarketHistoryQueryParams = zod.object({
-  "days": zod.coerce.number().int().min(1).max(getMarketHistoryQueryDaysMax).default(getMarketHistoryQueryDaysDefault).describe('Number of most recent stored trading days to return.')
+  "days": zod.coerce.number().int().min(1).max(getMarketHistoryQueryDaysMax).default(getMarketHistoryQueryDaysDefault).describe('Number of most recent snapshot trading days to return.')
 })
 
 export const GetMarketHistoryResponse = zod.object({

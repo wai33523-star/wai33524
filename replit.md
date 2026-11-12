@@ -8,14 +8,14 @@
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/db run snapshot:export` — refresh the checked-in read-only SQLite market snapshot from the current Replit PostgreSQL database
+- Runtime does not require `DATABASE_URL`; the API reads the packaged SQLite snapshot and does not persist refreshed market data.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- Data: read-only SQLite snapshot bundled with the API artifact; Replit PostgreSQL is retained as a source/backup for snapshot exports.
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -30,8 +30,8 @@
 ## Architecture decisions
 
 - 使用 Yahoo Finance 公開 chart API 取得日線資料，伺服器端完成計算，前端只負責呈現結果。
-- Yahoo 日線成功取得後會按股票代號與交易日写入 PostgreSQL `market_daily_prices`；外部历史源失效时读取数据库缓存。
-- 即时行情优先 Yahoo Finance，失败时回退 Sina Finance；两者的成功快照都会写入 PostgreSQL `market_snapshots`。
+- API 的历史回退资料及备用即时报价来自随服务发布的只读 SQLite 快照；刷新取得的外部行情不会写入快照。
+- 即时报价优先 Yahoo Finance，失败时回退 Sina Finance，再失败时读取本地快照。
 - Sina 即时报价不会混入 EOD 因子或历史回测，避免盘中未完成数据污染统计结果。
 - 恆生指數（`^HSI`）的歷史因子資料優先使用 Investing.com 商品 ID 179，接口受限時回退至 Yahoo Finance。
 - 股票輸入會先清洗：恆指別名統一為 `^HSI`，純數字港股代碼會補足四位數並加上 `.HK`。

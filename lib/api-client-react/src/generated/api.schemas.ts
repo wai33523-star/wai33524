@@ -392,7 +392,7 @@ export interface HistoricalBacktest {
 
 export type GetMarketHistoryParams = {
 /**
- * Number of most recent stored trading days to return.
+ * Number of most recent snapshot trading days to return.
  * @minimum 1
  * @maximum 90
  */

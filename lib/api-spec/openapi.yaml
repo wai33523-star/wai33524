@@ -149,8 +149,8 @@ paths:
     get:
       operationId: getMarketHistory
       tags: [market]
-      summary: Get recent daily market data from the database
-      description: Returns the most recent complete daily rows stored in PostgreSQL for a ticker.
+      summary: Get recent daily market data from the local snapshot
+      description: Returns the most recent complete daily rows stored in the read-only SQLite market snapshot for a ticker.
       parameters:
         - name: ticker
           in: path
@@ -164,7 +164,7 @@ paths:
         - name: days
           in: query
           required: false
-          description: Number of most recent stored trading days to return.
+          description: Number of most recent snapshot trading days to return.
           schema:
             type: integer
             minimum: 1
@@ -172,7 +172,7 @@ paths:
             default: 30
       responses:
         "200":
-          description: Recent stored daily market data
+          description: Recent daily market data from the local snapshot
           content:
             application/json:
               schema:

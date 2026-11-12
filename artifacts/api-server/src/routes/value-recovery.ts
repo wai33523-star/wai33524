@@ -68,7 +68,7 @@ async function loadValueRecoveryPicks() {
   );
   return GetHsiValueRecoveryPicksResponse.parse({
     asOf,
-    source: "Yahoo Finance Fundamentals Timeseries · Yahoo Finance EOD · PostgreSQL",
+    source: "Yahoo Finance Fundamentals Timeseries · Yahoo Finance EOD（SQLite 本地快照备用）",
     universeSize: hsiCoreUniverse.length,
     evaluatedCount: assessments.length,
     eligibleCount: combined.length,

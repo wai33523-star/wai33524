@@ -286,7 +286,7 @@ async function selectQualityStocks(mode: SelectionMode) {
 
   return GetHsiQualityPicksResponse.parse({
     asOf,
-    source: "Yahoo Finance · PostgreSQL",
+    source: "Yahoo Finance EOD（SQLite 本地快照备用）",
     universeSize: hsiCoreUniverse.length,
     scoredCount: ranked.length,
     picks,
@@ -375,7 +375,7 @@ async function loadHsiMovers() {
         .map((item, index) => ({ ...item, rank: index + 1 }));
       const response = GetHsiMoversResponse.parse({
         asOf: new Date(commonEndTimestamp * 1000).toISOString().slice(0, 10),
-        source: "Yahoo Finance · PostgreSQL",
+        source: "Yahoo Finance EOD（SQLite 本地快照备用）",
         universeSize: hsiCoreUniverse.length,
         scoredCount: metrics.length,
         gainers,
