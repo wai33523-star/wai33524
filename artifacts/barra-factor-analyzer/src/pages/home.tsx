@@ -784,18 +784,18 @@ export default function Home() {
               </span>
               <div>
                 <div className="font-bold text-[#294941]">Windows 11 桌面安裝版（x64）</div>
-                <div className="text-[10px] text-[#6e8980]">行情資料保存在本機；只有手動更新行情時才連網。</div>
+                <div className="text-[10px] text-[#6e8980]">行情資料保存在本機；安裝檔尚未有免費公開下載來源。</div>
               </div>
             </div>
-            <a
-              href="https://github.com/wai33523-star/wai33524/releases/latest/download/BarraFactorAnalyzer-Setup.exe"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-lg bg-[#176b59] px-3 text-[10px] font-bold text-white transition-colors hover:bg-[#105644] sm:self-auto"
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-8 cursor-not-allowed items-center justify-center gap-1.5 self-start rounded-lg bg-[#dce5e1] px-3 text-[10px] font-bold text-[#62766f] sm:self-auto"
               data-testid="button-download-windows"
+              title="免費下載來源尚未設定"
             >
-              下載安裝程式 <ArrowUpRight size={13} />
-            </a>
+              暫未提供下載
+            </button>
           </div>
         </div>
         <header className="sticky top-0 z-20 border-b border-[#dfe5e4] bg-[#f7f9f8]/95 backdrop-blur-md">
